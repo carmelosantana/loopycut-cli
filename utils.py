@@ -8,8 +8,59 @@ logging, and configuration management.
 import os
 import sys
 import json
-from typing import Optional, Any, Dict
+import re
+from typing import Optional, Any, Dict, Union
 from pathlib import Path
+
+
+def parse_time_string(time_str: Union[str, float, int]) -> float:
+    """
+    Parse a time string or number into seconds.
+    
+    Supports formats:
+    - Float/int: 14.5 (seconds)
+    - MM:SS: "14:30" (14 minutes 30 seconds)
+    - HH:MM:SS: "01:14:30" (1 hour 14 minutes 30 seconds)
+    - SS: "90" (90 seconds)
+    
+    Args:
+        time_str: Time string, float, or int to parse
+        
+    Returns:
+        Time in seconds as float
+        
+    Raises:
+        ValueError: If time format is invalid
+    """
+    if isinstance(time_str, (int, float)):
+        return float(time_str)
+    
+    if not isinstance(time_str, str):
+        raise ValueError(f"Invalid time format: {time_str}")
+    
+    time_str = time_str.strip()
+    
+    # Check for HH:MM:SS format
+    if re.match(r'^\d{1,2}:\d{2}:\d{2}(\.\d+)?$', time_str):
+        parts = time_str.split(':')
+        hours = int(parts[0])
+        minutes = int(parts[1])
+        seconds = float(parts[2])
+        return hours * 3600 + minutes * 60 + seconds
+    
+    # Check for MM:SS format
+    elif re.match(r'^\d{1,2}:\d{2}(\.\d+)?$', time_str):
+        parts = time_str.split(':')
+        minutes = int(parts[0])
+        seconds = float(parts[1])
+        return minutes * 60 + seconds
+    
+    # Check for plain seconds (string)
+    elif re.match(r'^\d+(\.\d+)?$', time_str):
+        return float(time_str)
+    
+    else:
+        raise ValueError(f"Invalid time format: {time_str}. Use HH:MM:SS, MM:SS, or seconds")
 
 
 def validate_video_file(file_path: str) -> bool:

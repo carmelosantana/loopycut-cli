@@ -23,6 +23,19 @@ from utils import (
 )
 
 
+class TimeType(click.ParamType):
+    """Custom Click parameter type for parsing time strings."""
+    name = 'time'
+    
+    def convert(self, value, param, ctx):
+        if value is None:
+            return None
+        try:
+            return parse_time_string(value)
+        except ValueError as e:
+            self.fail(f'{value!r} is not a valid time format. {str(e)}', param, ctx)
+
+
 @click.command()
 @click.argument('input', type=click.Path(), required=False)
 @click.argument('output', type=click.Path(), required=False)
@@ -36,10 +49,10 @@ from utils import (
               help='Extra seconds added after loop end (overrides --buffer)')
 @click.option('--similarity', type=int, default=98,
               help='Match threshold for similar frames (0-100)')
-@click.option('--start', '--start-time', type=float, default=0.0,
-              help='Starting time (in seconds) for loop detection')
-@click.option('--stop', '--stop-time', type=float, default=None,
-              help='Stop time (in seconds) to limit detection window')
+@click.option('--start', '--start-time', type=TimeType(), default=0.0,
+              help='Starting time for loop detection (supports HH:MM:SS, MM:SS, or seconds)')
+@click.option('--stop', '--stop-time', type=TimeType(), default=None,
+              help='Stop time to limit detection window (supports HH:MM:SS, MM:SS, or seconds)')
 @click.option('--start-frame', type=int, default=None,
               help='Start frame (overrides --start-time if both given)')
 @click.option('--stop-frame', type=int, default=None,
@@ -85,8 +98,10 @@ def main(input: Optional[str], output: Optional[str], length: str, buffer: float
         # 5-second loop with 99% similarity
         loopycut input.mp4 output.mp4 --length 5 --similarity 99
         
-        # Analyze specific time range
-        loopycut input.mp4 output.mp4 --start 10 --stop 30
+        # Analyze specific time range (supports multiple formats)
+        loopycut input.mp4 output.mp4 --start 00:00:14 --stop 00:00:32
+        loopycut input.mp4 output.mp4 --start 1:30 --stop 2:45
+        loopycut input.mp4 output.mp4 --start 14.5 --stop 32
         
         # Custom resolution and speed
         loopycut input.mp4 output.mp4 --resolution 1280x720 --speed 1.5
