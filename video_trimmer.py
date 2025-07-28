@@ -84,7 +84,6 @@ class VideoTrimmer:
             
             # Build output arguments
             output_args = {
-                'y': True,  # Overwrite output file
                 'vcodec': 'libx264',  # Use H.264 codec
                 'preset': 'medium',   # Encoding speed vs quality
                 'crf': 18             # High quality (lower = better quality)
