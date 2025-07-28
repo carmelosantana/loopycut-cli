@@ -1,0 +1,13 @@
+# LoopyCut Requirements
+# Video processing and computer vision
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# FFmpeg integration for video processing
+ffmpeg-python>=0.2.0
+
+# Command line interface
+click>=8.1.0
+
+# Progress bars for user feedback
+tqdm>=4.64.0
