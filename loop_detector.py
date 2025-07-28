@@ -9,6 +9,11 @@ from typing import List, Tuple, Optional, Union
 import numpy as np
 from tqdm import tqdm
 from frame_analyzer import FrameAnalyzer
+# Import for type hinting, but avoid circular import
+try:
+    from frame_analyzer_gpu import GPUFrameAnalyzer
+except ImportError:
+    GPUFrameAnalyzer = None
 
 
 class LoopDetector:
@@ -19,12 +24,12 @@ class LoopDetector:
     and determines the best loop boundaries based on user-specified criteria.
     """
     
-    def __init__(self, frame_analyzer: FrameAnalyzer):
+    def __init__(self, frame_analyzer):
         """
         Initialize the loop detector.
         
         Args:
-            frame_analyzer: Instance of FrameAnalyzer for frame comparison
+            frame_analyzer: Instance of FrameAnalyzer or GPUFrameAnalyzer for frame comparison
         """
         self.frame_analyzer = frame_analyzer
         self.detected_loops: List[dict] = []
@@ -34,7 +39,9 @@ class LoopDetector:
                     start_time: float = 0.0,
                     end_time: Optional[float] = None,
                     start_frame: Optional[int] = None,
-                    end_frame: Optional[int] = None) -> List[dict]:
+                    end_frame: Optional[int] = None,
+                    downsample_factor: int = 1,
+                    method: str = "combined") -> List[dict]:
         """
         Detect possible loops in the video within the specified range.
         
@@ -45,6 +52,8 @@ class LoopDetector:
             end_time: End time in seconds for analysis window (None for end)
             start_frame: Start frame number (overrides start_time if provided)
             end_frame: End frame number (overrides end_time if provided)
+            downsample_factor: Extract every Nth frame for faster processing
+            method: Frame comparison method to use
             
         Returns:
             List of detected loop candidates with metadata
@@ -71,12 +80,20 @@ class LoopDetector:
               f"({(end_frame - start_frame) / fps:.2f} seconds)")
         
         # Extract frames in the specified range
-        frames = self.frame_analyzer.extract_frames(
-            video_path, start_frame, end_frame
-        )
-        
-        # Find similar frame pairs
-        similar_pairs = self.frame_analyzer.find_similar_frames(frames)
+        if hasattr(self.frame_analyzer, 'extract_frames') and hasattr(self.frame_analyzer, 'find_similar_frames_optimized'):
+            # GPU Frame Analyzer
+            frames = self.frame_analyzer.extract_frames(
+                video_path, start_frame, end_frame, downsample_factor
+            )
+            # Use GPU-optimized similarity detection
+            similar_pairs = self.frame_analyzer.find_similar_frames_optimized(frames, method)
+        else:
+            # Regular Frame Analyzer
+            frames = self.frame_analyzer.extract_frames(
+                video_path, start_frame, end_frame
+            )
+            # Use regular similarity detection
+            similar_pairs = self.frame_analyzer.find_similar_frames(frames, method)
         
         if not similar_pairs:
             print("No similar frames found. Try adjusting similarity threshold.")
@@ -84,7 +101,7 @@ class LoopDetector:
         
         # Convert similar pairs to loop candidates
         loop_candidates = self._analyze_loop_candidates(
-            similar_pairs, frames, fps, desired_length, start_frame
+            similar_pairs, frames, fps, desired_length, start_frame, downsample_factor
         )
         
         # Rank and filter loop candidates
@@ -96,7 +113,7 @@ class LoopDetector:
     def _analyze_loop_candidates(self, similar_pairs: List[Tuple[int, int, float]],
                                 frames: List[np.ndarray], fps: float,
                                 desired_length: Union[str, float],
-                                frame_offset: int) -> List[dict]:
+                                frame_offset: int, downsample_factor: int = 1) -> List[dict]:
         """
         Analyze similar frame pairs to create loop candidates.
         
@@ -106,6 +123,7 @@ class LoopDetector:
             fps: Video frame rate
             desired_length: Desired loop length
             frame_offset: Offset of first frame in the full video
+            downsample_factor: Factor used for downsampling (for time correction)
             
         Returns:
             List of loop candidate dictionaries
@@ -114,8 +132,19 @@ class LoopDetector:
         
         with tqdm(similar_pairs, desc="Analyzing loop candidates", unit="pairs") as pbar:
             for start_idx, end_idx, similarity in pbar:
-                # Calculate loop properties
-                loop_frames = end_idx - start_idx
+                
+                # Convert extracted frame indices to original video frame indices
+                if hasattr(self.frame_analyzer, 'get_original_frame_index'):
+                    # GPU analyzer with proper frame index mapping
+                    original_start_frame = self.frame_analyzer.get_original_frame_index(start_idx)
+                    original_end_frame = self.frame_analyzer.get_original_frame_index(end_idx)
+                else:
+                    # Original analyzer - account for downsampling manually
+                    original_start_frame = frame_offset + (start_idx * downsample_factor)
+                    original_end_frame = frame_offset + (end_idx * downsample_factor)
+                
+                # Calculate loop properties using original frame indices
+                loop_frames = original_end_frame - original_start_frame
                 loop_duration = loop_frames / fps
                 
                 # Skip very short loops (less than 0.5 seconds)
@@ -127,21 +156,22 @@ class LoopDetector:
                     abs(loop_duration - desired_length) > desired_length * 0.2):
                     continue
                 
-                # Calculate quality metrics
+                # Calculate quality metrics using extracted frame indices
                 quality_score = self._calculate_loop_quality(
                     frames, start_idx, end_idx, similarity
                 )
                 
                 candidate = {
-                    'start_frame': start_idx + frame_offset,
-                    'end_frame': end_idx + frame_offset,
-                    'start_time': (start_idx + frame_offset) / fps,
-                    'end_time': (end_idx + frame_offset) / fps,
+                    'start_frame': original_start_frame,
+                    'end_frame': original_end_frame,
+                    'start_time': original_start_frame / fps,
+                    'end_time': original_end_frame / fps,
                     'duration': loop_duration,
                     'frame_count': loop_frames,
                     'similarity_score': similarity,
                     'quality_score': quality_score,
-                    'fps': fps
+                    'fps': fps,
+                    'downsample_factor': downsample_factor  # Store for reference
                 }
                 
                 candidates.append(candidate)
