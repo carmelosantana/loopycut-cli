@@ -1,0 +1,11 @@
+__pycache__/
+docs/
+output/
+venv*/
+*.mp3
+*.m4a
+*.mp4
+*.mov
+*.json
+test_*.mp4
+test_*.mov
