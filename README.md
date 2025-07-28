@@ -111,6 +111,11 @@ python loopycut.py input.mp4 output.mp4 \
   --speed 1.5 \
   --no-audio
 
+# Create 11-second output with 3x speed (uses 33s of source)
+python loopycut.py input.mp4 output.mp4 \
+  --output-length 11 \
+  --speed 3.0
+
 # Custom buffers and CPU-only mode
 python loopycut.py input.mp4 output.mp4 \
   --buffer-start 0.5 \
@@ -132,6 +137,7 @@ python loopycut.py input.mp4 output.mp4 \
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--length` | Loop length in seconds or "auto" | `auto` |
+| `--output-length` | Desired final output duration (auto-calculates source length based on speed) | `None` |
 | `--similarity` | Match threshold (0-100) | `98` |
 | `--start` | Start time for analysis (supports HH:MM:SS, MM:SS, or seconds) | `0.0` |
 | `--stop` | Stop time for analysis (supports HH:MM:SS, MM:SS, or seconds) | `end` |

@@ -63,6 +63,8 @@ class TimeType(click.ParamType):
               help='Include audio in the output')
 @click.option('--speed', type=float, default=1.0,
               help='Playback speed multiplier (e.g. 1.0 = normal)')
+@click.option('--output-length', type=float, default=None,
+              help='Desired final output duration in seconds (automatically calculates source length needed based on speed)')
 @click.option('--resize-strategy', type=click.Choice(['crop', 'pad', 'center']),
               default='center', help='Strategy for resolution mismatch')
 @click.option('--method', type=click.Choice(['ssim', 'histogram', 'hash', 'combined', 'fast_hash', 'batch_ssim', 'hybrid']),
@@ -81,7 +83,7 @@ def main(input: Optional[str], output: Optional[str], length: str, buffer: float
          buffer_start: Optional[float], buffer_stop: Optional[float],
          similarity: int, start: float, stop: Optional[float],
          start_frame: Optional[int], stop_frame: Optional[int],
-         resolution: Optional[str], audio: bool, speed: float,
+         resolution: Optional[str], audio: bool, speed: float, output_length: Optional[float],
          resize_strategy: str, method: str, gpu: bool, downsample: int,
          save_metadata: bool, verbose: bool, info: bool):
     """
@@ -105,6 +107,9 @@ def main(input: Optional[str], output: Optional[str], length: str, buffer: float
         
         # Custom resolution and speed
         loopycut input.mp4 output.mp4 --resolution 1280x720 --speed 1.5
+        
+        # Speed up 3x but keep 11 second output (uses 33s of source)
+        loopycut input.mp4 output.mp4 --output-length 11 --speed 3.0
     """
     
     # Show system info and exit if requested
@@ -138,7 +143,23 @@ def main(input: Optional[str], output: Optional[str], length: str, buffer: float
         sys.exit(1)
     
     # Parse length parameter
-    if length == "auto":
+    if output_length is not None and length != "auto":
+        # Check if user explicitly specified both length and output_length
+        click.echo("Error: Cannot specify both --length and --output-length", err=True)
+        sys.exit(1)
+    
+    if output_length is not None:
+        # User specified desired output length - calculate source length needed
+        if output_length <= 0:
+            click.echo("Error: Output length must be positive", err=True)
+            sys.exit(1)
+        # Calculate source length needed: output_length * speed = source_length
+        calculated_source_length = output_length * speed
+        desired_length = calculated_source_length
+        if verbose:
+            click.echo(f"Output length requested: {output_length}s at {speed}x speed")
+            click.echo(f"Source length needed: {calculated_source_length}s")
+    elif length == "auto":
         desired_length = "auto"
     else:
         try:
