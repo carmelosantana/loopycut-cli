@@ -13,6 +13,7 @@ from typing import Optional
 
 # Import our modules
 from frame_analyzer import FrameAnalyzer
+from frame_analyzer_gpu import GPUFrameAnalyzer
 from loop_detector import LoopDetector
 from video_trimmer import VideoTrimmer
 from utils import (
@@ -51,8 +52,12 @@ from utils import (
               help='Playback speed multiplier (e.g. 1.0 = normal)')
 @click.option('--resize-strategy', type=click.Choice(['crop', 'pad', 'center']),
               default='center', help='Strategy for resolution mismatch')
-@click.option('--method', type=click.Choice(['ssim', 'histogram', 'hash', 'combined']),
+@click.option('--method', type=click.Choice(['ssim', 'histogram', 'hash', 'combined', 'fast_hash', 'batch_ssim', 'hybrid']),
               default='combined', help='Frame comparison method')
+@click.option('--gpu/--no-gpu', default=True,
+              help='Enable GPU acceleration (Apple Silicon/CUDA)')
+@click.option('--downsample', type=int, default=1,
+              help='Extract every Nth frame for faster processing (1=all frames)')
 @click.option('--save-metadata/--no-save-metadata', default=True,
               help='Save loop metadata to JSON file')
 @click.option('--verbose', '-v', is_flag=True,
@@ -64,8 +69,8 @@ def main(input: Optional[str], output: Optional[str], length: str, buffer: float
          similarity: int, start: float, stop: Optional[float],
          start_frame: Optional[int], stop_frame: Optional[int],
          resolution: Optional[str], audio: bool, speed: float,
-         resize_strategy: str, method: str, save_metadata: bool,
-         verbose: bool, info: bool):
+         resize_strategy: str, method: str, gpu: bool, downsample: int,
+         save_metadata: bool, verbose: bool, info: bool):
     """
     LoopyCut - Create seamless video loops automatically.
     
@@ -162,8 +167,21 @@ def main(input: Optional[str], output: Optional[str], length: str, buffer: float
         # Initialize components
         if verbose:
             click.echo("Initializing video analysis...")
+            click.echo(f"GPU acceleration: {'Enabled' if gpu else 'Disabled'}")
+            if downsample > 1:
+                click.echo(f"Downsampling: every {downsample} frames")
         
-        frame_analyzer = FrameAnalyzer(similarity_threshold=similarity_threshold)
+        # Choose analyzer based on GPU setting
+        if gpu and method in ['fast_hash', 'batch_ssim', 'hybrid']:
+            frame_analyzer = GPUFrameAnalyzer(similarity_threshold=similarity_threshold)
+            if verbose:
+                stats = frame_analyzer.get_performance_stats()
+                click.echo(f"GPU capabilities: {stats}")
+        else:
+            frame_analyzer = FrameAnalyzer(similarity_threshold=similarity_threshold)
+            if gpu and verbose:
+                click.echo("Note: GPU methods require 'fast_hash', 'batch_ssim', or 'hybrid' method")
+        
         loop_detector = LoopDetector(frame_analyzer)
         video_trimmer = VideoTrimmer()
         
@@ -190,7 +208,9 @@ def main(input: Optional[str], output: Optional[str], length: str, buffer: float
             start_time=start,
             end_time=stop,
             start_frame=start_frame,
-            end_frame=stop_frame
+            end_frame=stop_frame,
+            downsample_factor=downsample,
+            method=method
         )
         
         if not loops:
