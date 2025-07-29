@@ -137,7 +137,7 @@ python loopycut.py input.mp4 output.mp4 \
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--length` | Loop length in seconds or "auto" | `auto` |
-| `--output-length` | Desired final output duration (auto-calculates source length based on speed) | `None` |
+| `--output-length` | Desired final output duration (auto calculates source length based on speed) | `None` |
 | `--similarity` | Match threshold (0-100) | `98` |
 | `--start` | Start time for analysis (supports HH:MM:SS, MM:SS, or seconds) | `0.0` |
 | `--stop` | Stop time for analysis (supports HH:MM:SS, MM:SS, or seconds) | `end` |
@@ -186,7 +186,7 @@ python loopycut.py input.mp4 output.mp4 --start 90 --stop 135.5
 - **`hash`**: Perceptual hashing - fastest, good for identical frames
 
 **GPU-Accelerated Methods:**
-- **`fast_hash`**: Ultra-fast perceptual hashing (100-700x speedup)
+- **`fast_hash`**: Fast perceptual hashing (100-700x speedup)
 - **`batch_ssim`**: GPU-optimized SSIM calculations
 - **`hybrid`**: Hash pre-filtering + SSIM verification (best balance of speed + accuracy)
 
@@ -405,32 +405,4 @@ python cli.py info sample_video.mp4
 
 ## License
 
-MIT License - see LICENSE file for details.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## Roadmap
-
-Phase 1 (Current):
-- ✅ Core loop detection and trimming
-- ✅ Command-line interface
-- ✅ Multiple comparison methods
-- ✅ Progress feedback and logging
-
-Phase 2 (Planned):
-- Export to GIF format
-- Batch processing support
-- JSON metadata export
-- DaVinci Resolve XML/EDL export
-
-Phase 3 (Future):
-- Electron-based GUI
-- DaVinci-style interface
-- Real-time preview
-- Advanced editing features
+[LoopyCut](https://github.com/carmelosantana/loopycut-cli) © 2025 by [Carmelo Santana](https://carmelosantana.com) is licensed under [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/)
