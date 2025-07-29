@@ -7,6 +7,7 @@ Analyzes video frames to detect visual similarities and creates perfectly looped
 """
 
 import click
+import json
 import os
 import sys
 from typing import Optional
@@ -75,6 +76,8 @@ class TimeType(click.ParamType):
               help='Extract every Nth frame for faster processing (1=all frames)')
 @click.option('--save-metadata/--no-save-metadata', default=True,
               help='Save loop metadata to JSON file')
+@click.option('--loop-count', type=int, default=1,
+              help='Number of different loops to create from the video (default: 1)')
 @click.option('--verbose', '-v', is_flag=True,
               help='Enable verbose output')
 @click.option('--info', is_flag=True,
@@ -85,7 +88,7 @@ def main(input: Optional[str], output: Optional[str], length: str, buffer: float
          start_frame: Optional[int], stop_frame: Optional[int],
          resolution: Optional[str], audio: bool, speed: float, output_length: Optional[float],
          resize_strategy: str, method: str, gpu: bool, downsample: int,
-         save_metadata: bool, verbose: bool, info: bool):
+         save_metadata: bool, loop_count: int, verbose: bool, info: bool):
     """
     LoopyCut - Create seamless video loops automatically.
     
@@ -110,6 +113,9 @@ def main(input: Optional[str], output: Optional[str], length: str, buffer: float
         
         # Speed up 3x but keep 11 second output (uses 33s of source)
         loopycut input.mp4 output.mp4 --output-length 11 --speed 3.0
+        
+        # Create 3 different loops from the same video
+        loopycut input.mp4 output.mp4 --loop-count 3 --similarity 85
     """
     
     # Show system info and exit if requested
@@ -174,7 +180,15 @@ def main(input: Optional[str], output: Optional[str], length: str, buffer: float
     if not (0 <= similarity <= 100):
         click.echo("Error: Similarity must be between 0 and 100", err=True)
         sys.exit(1)
-    
+
+    # Validate loop count
+    if loop_count < 1:
+        click.echo("Error: Loop count must be at least 1", err=True)
+        sys.exit(1)
+    if loop_count > 10:
+        click.echo("Error: Loop count cannot exceed 10 (performance limit)", err=True)
+        sys.exit(1)
+
     # Convert similarity percentage to decimal
     similarity_threshold = similarity / 100.0
     
@@ -259,80 +273,109 @@ def main(input: Optional[str], output: Optional[str], length: str, buffer: float
         # Show loop candidates
         if verbose or len(loops) > 1:
             loop_detector.print_loop_summary(loops)
+
+        # Determine how many loops to create
+        loops_to_create = min(loop_count, len(loops))
         
-        # Use the best loop
-        best_loop = loops[0]
+        if loops_to_create < loop_count:
+            click.echo(f"Warning: Only found {loops_to_create} suitable loop(s), creating {loops_to_create} instead of {loop_count}")
         
-        click.echo(f"Selected loop:")
-        click.echo(f"  Time: {format_time(best_loop['start_time'])} - {format_time(best_loop['end_time'])}")
-        click.echo(f"  Duration: {format_duration(best_loop['duration'])}")
-        click.echo(f"  Quality score: {best_loop['quality_score']:.3f}")
-        click.echo()
-        
-        # Create the looped video
-        click.echo("Creating looped video...")
-        
-        success = video_trimmer.trim_video(
-            input_path=input,
-            output_path=output,
-            start_time=best_loop['start_time'],
-            end_time=best_loop['end_time'],
-            buffer_start=buffer_start,
-            buffer_end=buffer_stop,
-            resolution=resolution,
-            speed=speed,
-            include_audio=audio,
-            resize_strategy=resize_strategy
-        )
-        
-        if not success:
-            click.echo("Error: Failed to create video output", err=True)
-            sys.exit(1)
-        
-        # Validate output
-        if not video_trimmer.validate_output(output):
-            click.echo("Warning: Output validation failed", err=True)
-        
-        # Save metadata if requested
-        if save_metadata:
-            metadata = {
-                'input_file': input,
-                'output_file': output,
-                'loop_info': best_loop,
-                'processing_options': {
-                    'similarity_threshold': similarity,
-                    'method': method,
-                    'buffer_start': buffer_start,
-                    'buffer_stop': buffer_stop,
-                    'resolution': resolution,
-                    'speed': speed,
-                    'include_audio': audio,
-                    'resize_strategy': resize_strategy
+        # Process each loop
+        for i in range(loops_to_create):
+            current_loop = loops[i]
+            
+            # Generate output filename
+            if loop_count == 1:
+                current_output = output
+            else:
+                # Add sequence number to filename
+                base_name, ext = os.path.splitext(output)
+                current_output = f"{base_name}_loop{i+1:02d}{ext}"
+            
+            click.echo(f"Creating loop {i+1}/{loops_to_create}:")
+            click.echo(f"  Time: {format_time(current_loop['start_time'])} - {format_time(current_loop['end_time'])}")
+            click.echo(f"  Duration: {format_duration(current_loop['duration'])}")
+            click.echo(f"  Quality score: {current_loop['quality_score']:.3f}")
+            click.echo(f"  Output: {current_output}")
+            click.echo()
+
+            # Create the looped video
+            success = video_trimmer.trim_video(
+                input_path=input,
+                output_path=current_output,
+                start_time=current_loop['start_time'],
+                end_time=current_loop['end_time'],
+                buffer_start=buffer_start,
+                buffer_end=buffer_stop,
+                resolution=resolution,
+                speed=speed,
+                include_audio=audio,
+                resize_strategy=resize_strategy
+            )
+
+            if not success:
+                click.echo(f"Error: Failed to create video output: {current_output}", err=True)
+                continue
+
+            # Validate output
+            if not video_trimmer.validate_output(current_output):
+                click.echo(f"Warning: Output validation failed for: {current_output}", err=True)
+
+            # Save metadata if requested
+            if save_metadata:
+                metadata = {
+                    'input_file': input,
+                    'output_file': current_output,
+                    'loop_info': current_loop,
+                    'processing_options': {
+                        'similarity_threshold': similarity,
+                        'method': method,
+                        'buffer_start': buffer_start,
+                        'buffer_stop': buffer_stop,
+                        'resolution': resolution,
+                        'speed': speed,
+                        'include_audio': audio,
+                        'resize_strategy': resize_strategy,
+                        'loop_count': loop_count,
+                        'loop_index': i + 1
+                    }
                 }
-            }
-            save_loop_metadata(output, metadata)
-        
-        click.echo()
-        click.echo(f"✓ Successfully created looped video: {output}")
-        
-        # Show final stats
-        if verbose:
-            final_info = video_trimmer.get_video_info(output)
-            if final_info:
-                final_duration = final_info['duration']
-                final_size = final_info['size_bytes']
-                click.echo(f"Final duration: {format_duration(final_duration)}")
-                click.echo(f"File size: {final_size / (1024*1024):.1f} MB")
-        
+                
+                metadata_file = current_output.replace('.mp4', '.json')
+                with open(metadata_file, 'w') as f:
+                    json.dump(metadata, f, indent=2)
+
+        # Summary message
+        if loops_to_create == 1:
+            click.echo(f"✓ Successfully created looped video: {output}")
+        else:
+            click.echo(f"✓ Successfully created {loops_to_create} looped videos:")
+            for i in range(loops_to_create):
+                if loop_count == 1:
+                    current_output = output
+                else:
+                    base_name, ext = os.path.splitext(output)
+                    current_output = f"{base_name}_loop{i+1:02d}{ext}"
+                
+                # Get file size
+                try:
+                    file_size = os.path.getsize(current_output) / (1024 * 1024)
+                    click.echo(f"  {current_output} ({file_size:.1f} MB)")
+                except:
+                    click.echo(f"  {current_output}")
+
     except KeyboardInterrupt:
-        click.echo("\nOperation cancelled by user", err=True)
+        click.echo("\nOperation cancelled by user")
         sys.exit(1)
     except Exception as e:
-        click.echo(f"Error: {e}", err=True)
+        click.echo(f"Error: {str(e)}", err=True)
         if verbose:
             import traceback
             traceback.print_exc()
         sys.exit(1)
+
+
+
 
 
 @click.command()
