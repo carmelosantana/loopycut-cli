@@ -48,15 +48,24 @@ choco install ffmpeg
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/yourusername/loopycut-app.git
-cd loopycut-app
+git clone https://github.com/carmelosantana/loopycut-cli.git
+cd loopycut-cli
 ```
 
 2. **Create and activate virtual environment:**
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+source .venv/bin/activate
 ```
+
+   On Windows PowerShell, activate the environment with:
+   ```powershell
+   .venv\Scripts\Activate.ps1
+   ```
+   If PowerShell blocks the script, run the following once and try again:
+   ```powershell
+   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+   ```
 
 3. **Install dependencies:**
 ```bash
